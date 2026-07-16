@@ -1,0 +1,13 @@
+# Rust build output
+/target/
+
+# Rust library crates typically do not need to track Cargo.lock
+/Cargo.lock
+
+# Generated proof / parameter artifacts
+*.bin
+*.data
+
+# Local editor / OS files
+.DS_Store
+.vscode/
