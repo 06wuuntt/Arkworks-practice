@@ -14,11 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = test_rng();
 
     // 3. 執行 Groth16 trusted setup
-    let pk =
-        Groth16::<Bls12_381>::generate_random_parameters_with_reduction(
-            circuit,
-            &mut rng,
-        )?;
+    let pk = Groth16::<Bls12_381>::generate_random_parameters_with_reduction(circuit, &mut rng)?;
 
     // 4. 將 proving key 寫入 pk.bin
     let pk_file = File::create("pk.bin")?;

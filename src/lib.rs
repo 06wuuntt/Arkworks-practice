@@ -1,11 +1,7 @@
 use ark_bls12_381::Fr;
 use ark_relations::lc;
 use ark_relations::r1cs::{
-    ConstraintSynthesizer,
-    ConstraintSystemRef,
-    LinearCombination,
-    SynthesisError,
-    Variable,
+    ConstraintSynthesizer, ConstraintSystemRef, LinearCombination, SynthesisError, Variable,
 };
 
 pub type ConstraintF = Fr;
@@ -28,33 +24,24 @@ pub struct ScalarLinearCircuit {
 }
 
 impl ConstraintSynthesizer<ConstraintF> for ScalarLinearCircuit {
-    fn generate_constraints(self, cs: ConstraintSystemRef<ConstraintF>) -> Result<(), SynthesisError> {
+    fn generate_constraints(
+        self,
+        cs: ConstraintSystemRef<ConstraintF>,
+    ) -> Result<(), SynthesisError> {
         // Private witness
-        let w_var = cs.new_witness_variable(|| {
-            self.w.ok_or(SynthesisError::AssignmentMissing)
-        })?;
+        let w_var = cs.new_witness_variable(|| self.w.ok_or(SynthesisError::AssignmentMissing))?;
 
         // Private witness
-        let x_var = cs.new_witness_variable(|| {
-            self.x.ok_or(SynthesisError::AssignmentMissing)
-        })?;
+        let x_var = cs.new_witness_variable(|| self.x.ok_or(SynthesisError::AssignmentMissing))?;
 
         // Private witness
-        let b_var = cs.new_witness_variable(|| {
-            self.b.ok_or(SynthesisError::AssignmentMissing)
-        })?;
+        let b_var = cs.new_witness_variable(|| self.b.ok_or(SynthesisError::AssignmentMissing))?;
 
         // Public input
-        let y_var = cs.new_input_variable(|| {
-            self.y.ok_or(SynthesisError::AssignmentMissing)
-        })?;
+        let y_var = cs.new_input_variable(|| self.y.ok_or(SynthesisError::AssignmentMissing))?;
 
         // TODO: 由你建立核心 R1CS constraint。
-        cs.enforce_constraint(
-            lc!() + w_var,
-            lc!() + x_var,
-            lc!() + y_var - b_var,
-        )?;
+        cs.enforce_constraint(lc!() + w_var, lc!() + x_var, lc!() + y_var - b_var)?;
         // 你可以使用的 circuit variables：
         // - w_var
         // - x_var
@@ -90,9 +77,7 @@ mod tests {
             .generate_constraints(cs.clone())
             .expect("建立 constraints 失敗");
 
-        let is_satisfied = cs
-            .is_satisfied()
-            .expect("檢查 constraint system 失敗");
+        let is_satisfied = cs.is_satisfied().expect("檢查 constraint system 失敗");
 
         println!("is_satisfied = {is_satisfied}");
         assert!(is_satisfied);
@@ -115,9 +100,7 @@ mod tests {
             .generate_constraints(cs.clone())
             .expect("建立 constraints 失敗");
 
-        let is_satisfied = cs
-            .is_satisfied()
-            .expect("檢查 constraint system 失敗");
+        let is_satisfied = cs.is_satisfied().expect("檢查 constraint system 失敗");
 
         println!("is_satisfied = {is_satisfied}");
         assert!(!is_satisfied);
@@ -141,19 +124,21 @@ pub struct MatrixLinearCircuit {
 }
 
 impl ConstraintSynthesizer<ConstraintF> for MatrixLinearCircuit {
-    fn generate_constraints(self, cs: ConstraintSystemRef<ConstraintF>) -> Result<(),SynthesisError> {
+    fn generate_constraints(
+        self,
+        cs: ConstraintSystemRef<ConstraintF>,
+    ) -> Result<(), SynthesisError> {
         // Private witness
         let mut w_vars = Vec::with_capacity(2);
-        
+
         for i in 0..2 {
             let mut row_vars = Vec::with_capacity(2);
 
             for j in 0..2 {
                 let value = self.w[i][j];
 
-                let var = cs.new_witness_variable(|| {
-                    value.ok_or(SynthesisError::AssignmentMissing)
-                })?;
+                let var =
+                    cs.new_witness_variable(|| value.ok_or(SynthesisError::AssignmentMissing))?;
 
                 row_vars.push(var);
             }
@@ -167,9 +152,7 @@ impl ConstraintSynthesizer<ConstraintF> for MatrixLinearCircuit {
         for i in 0..2 {
             let value = self.x[i];
 
-            let var = cs.new_witness_variable(|| {
-                value.ok_or(SynthesisError::AssignmentMissing)
-            })?;
+            let var = cs.new_witness_variable(|| value.ok_or(SynthesisError::AssignmentMissing))?;
 
             x_vars.push(var);
         }
@@ -179,9 +162,7 @@ impl ConstraintSynthesizer<ConstraintF> for MatrixLinearCircuit {
         for i in 0..2 {
             let value = self.b[i];
 
-            let var = cs.new_witness_variable(|| {
-                value.ok_or(SynthesisError::AssignmentMissing)
-            })?;
+            let var = cs.new_witness_variable(|| value.ok_or(SynthesisError::AssignmentMissing))?;
 
             b_vars.push(var);
         }
@@ -192,9 +173,7 @@ impl ConstraintSynthesizer<ConstraintF> for MatrixLinearCircuit {
         for i in 0..2 {
             let value = self.y[i];
 
-            let var = cs.new_input_variable(|| {
-                value.ok_or(SynthesisError::AssignmentMissing)
-            })?;
+            let var = cs.new_input_variable(|| value.ok_or(SynthesisError::AssignmentMissing))?;
 
             y_vars.push(var);
         }
@@ -214,7 +193,7 @@ impl ConstraintSynthesizer<ConstraintF> for MatrixLinearCircuit {
 
                     Ok(w * x)
                 })?;
-                
+
                 row_vars.push(product_var);
             }
             product_vars.push(row_vars);
@@ -228,29 +207,21 @@ impl ConstraintSynthesizer<ConstraintF> for MatrixLinearCircuit {
                 let right_lc = LinearCombination::<ConstraintF>::from(x_vars[j]);
                 let output_lc = LinearCombination::<ConstraintF>::from(product_vars[i][j]);
 
-                cs.enforce_constraint(
-                    left_lc,
-                    right_lc,
-                    output_lc,
-                )?;
+                cs.enforce_constraint(left_lc, right_lc, output_lc)?;
             }
         }
 
         // 加法 constraints
         // product[i][0] + product[i][1] + B[i] = Y[i]
         for i in 0..2 {
-            let output_lc = LinearCombination::<ConstraintF>::from(
-                product_vars[i][0],
-            ) + product_vars[i][1] + b_vars[i];
+            let output_lc = LinearCombination::<ConstraintF>::from(product_vars[i][0])
+                + product_vars[i][1]
+                + b_vars[i];
 
             let one_lc = LinearCombination::<ConstraintF>::from(Variable::One);
             let y_lc = LinearCombination::<ConstraintF>::from(y_vars[i]);
 
-            cs.enforce_constraint(
-                output_lc,
-                one_lc,
-                y_lc,
-            )?;
+            cs.enforce_constraint(output_lc, one_lc, y_lc)?;
         }
 
         Ok(())
@@ -269,10 +240,7 @@ mod matrix_tests {
     #[test]
     fn matrix_circuit_accepts_correct_output() {
         let circuit = MatrixLinearCircuit {
-            w: [
-                [Some(f(2)), Some(f(1))],
-                [Some(f(3)), Some(f(4))],
-            ],
+            w: [[Some(f(2)), Some(f(1))], [Some(f(3)), Some(f(4))]],
             x: [Some(f(5)), Some(f(2))],
             b: [Some(f(3)), Some(f(1))],
             y: [Some(f(15)), Some(f(24))],
@@ -284,9 +252,7 @@ mod matrix_tests {
             .generate_constraints(cs.clone())
             .expect("建立矩陣 constraints 失敗");
 
-        let is_satisfied = cs
-            .is_satisfied()
-            .expect("檢查 constraint system 失敗");
+        let is_satisfied = cs.is_satisfied().expect("檢查 constraint system 失敗");
 
         assert!(is_satisfied);
     }
@@ -294,10 +260,7 @@ mod matrix_tests {
     #[test]
     fn matrix_circuit_rejects_wrong_output() {
         let circuit = MatrixLinearCircuit {
-            w: [
-                [Some(f(2)), Some(f(1))],
-                [Some(f(3)), Some(f(4))],
-            ],
+            w: [[Some(f(2)), Some(f(1))], [Some(f(3)), Some(f(4))]],
             x: [Some(f(5)), Some(f(2))],
             b: [Some(f(3)), Some(f(1))],
 
@@ -311,9 +274,7 @@ mod matrix_tests {
             .generate_constraints(cs.clone())
             .expect("建立矩陣 constraints 失敗");
 
-        let is_satisfied = cs
-            .is_satisfied()
-            .expect("檢查 constraint system 失敗");
+        let is_satisfied = cs.is_satisfied().expect("檢查 constraint system 失敗");
 
         assert!(!is_satisfied);
     }
