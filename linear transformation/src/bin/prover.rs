@@ -3,9 +3,14 @@ use ark_groth16::{Groth16, ProvingKey};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_snark::SNARK;
 use ark_std::rand::{rngs::StdRng, SeedableRng};
-use arkworks_practice::MatrixLinearCircuit;
+use linear_transformation::MatrixLinearCircuit;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
+use std::path::PathBuf;
+
+fn exercise_path(file_name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file_name)
+}
 
 fn f(value: u64) -> Fr {
     Fr::from(value)
@@ -13,7 +18,7 @@ fn f(value: u64) -> Fr {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. 開啟 pk.bin
-    let pk_file = File::open("pk.bin")?;
+    let pk_file = File::open(exercise_path("pk.bin"))?;
     let mut pk_reader = BufReader::new(pk_file);
 
     // 2. 反序列化 proving key
@@ -34,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let proof = Groth16::<Bls12_381>::prove(&pk, circuit, &mut rng)?;
 
     // 6. 儲存 compressed proof
-    let compressed_file = File::create("proof_compressed.data")?;
+    let compressed_file = File::create(exercise_path("proof_compressed.data"))?;
 
     let mut compressed_writer = BufWriter::new(compressed_file);
 
@@ -42,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     compressed_writer.flush()?;
 
     // 7. 儲存 uncompressed proof
-    let uncompressed_file = File::create("proof_uncompressed.data")?;
+    let uncompressed_file = File::create(exercise_path("proof_uncompressed.data"))?;
 
     let mut uncompressed_writer = BufWriter::new(uncompressed_file);
 

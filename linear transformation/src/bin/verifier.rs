@@ -9,6 +9,11 @@ use ark_serialize::CanonicalDeserialize;
 use ark_snark::SNARK;
 use std::fs::File;
 use std::io::BufReader;
+use std::path::PathBuf;
+
+fn exercise_path(file_name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file_name)
+}
 
 fn f(value: u64) -> Fr {
     Fr::from(value)
@@ -16,7 +21,7 @@ fn f(value: u64) -> Fr {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. 開啟 vk.bin
-    let vk_file = File::open("vk.bin")?;
+    let vk_file = File::open(exercise_path("vk.bin"))?;
     let mut vk_reader = BufReader::new(vk_file);
 
     // 2. 反序列化 verifying key
@@ -29,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let prepared_vk = prepare_verifying_key(&vk);
 
     // 4. 開啟 compressed proof
-    let proof_file = File::open("proof_compressed.data")?;
+    let proof_file = File::open(exercise_path("proof_compressed.data"))?;
     let mut proof_reader = BufReader::new(proof_file);
 
     // 5. 反序列化 proof
