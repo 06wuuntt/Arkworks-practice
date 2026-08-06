@@ -2,4 +2,5 @@
 resolver = "2"
 members = [
     "linear transformation",
+    "lookup table"
 ]
