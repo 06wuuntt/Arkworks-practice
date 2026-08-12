@@ -1,16 +1,16 @@
 # Arkworks 練習：用 Plookup 驗證 Integer ReLU
 
-本練習使用 Arkworks 0.5 實作一個 Integer ReLU lookup proof。目標不是在有限域中直接比較大小，而是證明每一組 witness row `(x, y)` 都存在於公開的 ReLU table：
+本練習使用 Arkworks 0.5 實作 ReLU lookup proof。測試案例分為整數與浮點數兩類；現階段只實作 Integer ReLU，浮點數案例保留為後續擴充。目標不是在有限域中直接比較大小，而是證明每一組 witness row `(x, y)` 都存在於公開的 ReLU table：
 
 $$
-y=\operatorname{ReLU}(x)=\max(0,x).
+y=\text{ReLU}(x)=\max(0,x).
 $$
 
 實作流程參考 [kevaundray/plookup](https://github.com/kevaundray/plookup) 的 4-bit XOR 範例。該範例將 `(left, right, xor)` 三欄壓縮後做 lookup；本練習改為將 ReLU 的 `(input, output)` 兩欄壓縮，其餘 sorted concatenation、grand product、quotient polynomial 與 KZG opening 的概念相同。
 
 > 這是一個用來理解論文協定的 POC，不是完整的 PLONK proving system。第一階段先完成並直接檢查 Plookup identities，第二階段再加入 polynomial commitment。
 
-## 1. 建立公開 ReLU table
+## 1. 建立公開 ReLU table（`src/lookup/table/relu.rs`、`src/lookup/table/mod.rs`）
 
 將輸入範圍限制為：
 
@@ -45,18 +45,22 @@ $$
 
 有限域本身沒有正負號或大小順序；`-24` 只是 `24` 的加法反元素。因此，ReLU 的語意完全由公開 table 的合法 rows 定義，不能在 field element 上直接呼叫 `max()` 或做一般整數排序。
 
-## 2. 建立 witness rows
+## 2. 建立 witness rows（`src/lookup/lookup.rs`）
 
-題目輸入為：
+題目包含兩組輸入序列。
+
+### 整數案例（目前實作）
+
+輸入為：
 
 ```rust
-[2, 4, -1, 0, 15, 6, -24, -2, 15]
+let inputs: [i64; 9] = [2, 4, -1, 0, 15, 6, -24, -2, 15];
 ```
 
 對應的輸出為：
 
 ```rust
-[2, 4, 0, 0, 15, 6, 0, 0, 15]
+let expected: [i64; 9] = [2, 4, 0, 0, 15, 6, 0, 0, 15];
 ```
 
 所以有效 witness rows 是：
@@ -66,9 +70,25 @@ $$
 (6, 6), (-24, 0), (-2, 0), (15, 15)
 ```
 
+### 浮點數案例（後續擴充）
+
+輸入為：
+
+```rust
+let inputs = [2.0, 4.0, -1.0, 0.0, 0.85, 0.3, 24.0, -0.2, 0.15];
+```
+
+預期輸出為：
+
+```rust
+let expected = [2.0, 4.0, 0.0, 0.0, 0.85, 0.3, 24.0, 0.0, 0.15];
+```
+
+這組案例現階段不實作，也不納入 proof 測試。有限域不能直接表示 `f32` 或 `f64`；後續階段必須先決定 fixed-point scale、可表示範圍與量化規則，再建立相應的 ReLU lookup table。例如選定 scale $S$ 後，以整數 $\widetilde{x}=\mathrm{round}(Sx)$ 表示浮點數，並在 proof 外部將結果解碼回 $\widetilde{x}/S$。
+
 令 evaluation domain 的大小為 $N=64$，並令 $n=N-1=63$。論文的基本形式使用長度 $N$ 的 table 與長度 $n$ 的 witness，因此用合法 row `(0, 0)` 將 witness 補到 63 列。Padding 也是 proof statement 的一部分，所以只能使用 table 中存在的 row。
 
-## 3. 用隨機挑戰壓縮每一列
+## 3. 用隨機挑戰壓縮每一列（`src/lookup/proof.rs`、`src/multiset/multiset.rs`）
 
 Plookup 的核心包含關係處理的是單一 field element。Verifier 從 transcript 取得隨機挑戰 $\theta$，將 ReLU 的兩欄綁成一個值：
 
@@ -90,12 +110,12 @@ $$
 
 > 參考 repo 的 XOR table 有三欄，因此使用形如 $a+\theta b+\theta^2c$ 的壓縮；ReLU 只有兩欄，所以使用 $x+\theta y$。
 
-## 4. 依 table 順序建立 sorted concatenation
+## 4. 依 table 順序建立 sorted concatenation（`src/multiset/multiset.rs`）
 
 將壓縮後的 witness 與 table 合併，再依「公開 table 的 row 順序」排列：
 
 $$
-s=\operatorname{sort}_t(f\mathbin\Vert t).
+s=\mathrm{sort}_t(f\mathbin\Vert t).
 $$
 
 這不是對 field representatives 做數值排序。實作時應保留每個 witness row 對應的 table index，或建立 `row -> table_index` 的 mapping，然後按 index 排序。
@@ -115,7 +135,7 @@ len(s) = 2n + 1 = 127
 
 如果 witness row 不存在於 table，建立 sorted concatenation 時就應回傳錯誤；測試不可只停在這個 host-language 檢查，還要直接注入錯誤的 `f`，確認後續 grand-product identity 也會失敗。
 
-## 5. 將 vectors 插值成 polynomials
+## 5. 將 vectors 插值成 polynomials（`src/multiset/multiset.rs`、`src/multiset/multiset_equality.rs`）
 
 建立大小 $N=64$ 的 radix-2 multiplicative subgroup：
 
@@ -146,17 +166,17 @@ $$
 h_1(\omega^n)=h_2(1).
 $$
 
-## 6. 建立 grand-product accumulator
+## 6. 建立 grand-product accumulator（`src/multiset/multiset_equality.rs`）
 
 Verifier 再從 transcript 取得隨機挑戰 $\beta,\gamma\in\mathbb F$。對每個 $0\le i<n$，定義：
 
 $$
-\operatorname{NUM}_i=(1+\beta)(\gamma+f_i)
+\mathrm{NUM}_i=(1+\beta)(\gamma+f_i)
 \bigl(\gamma(1+\beta)+t_i+\beta t_{i+1}\bigr),
 $$
 
 $$
-\operatorname{DEN}_i=
+\mathrm{DEN}_i=
 \bigl(\gamma(1+\beta)+h_{1,i}+\beta h_{1,i+1}\bigr)
 \bigl(\gamma(1+\beta)+h_{2,i}+\beta h_{2,i+1}\bigr).
 $$
@@ -164,18 +184,18 @@ $$
 從 $Z(1)=1$ 開始逐列累積：
 
 $$
-Z(\omega^{i+1})=Z(\omega^i)\frac{\operatorname{NUM}_i}{\operatorname{DEN}_i}.
+Z(\omega^{i+1})=Z(\omega^i)\frac{\mathrm{NUM}_i}{\mathrm{DEN}_i}.
 $$
 
 $\beta$ 將相鄰 values 壓縮成一個 ordered pair；$\gamma$ 將 multiset equality 隨機化。若 $f\subseteq t$，sorted sequence 中的 `(v,v)` 與 `(t_i,t_{i+1})` 恰好會重組成 numerator 中相同的 factors，因此：
 
 $$
-Z(\omega^n)=\prod_{i=0}^{n-1}\frac{\operatorname{NUM}_i}{\operatorname{DEN}_i}=1.
+Z(\omega^n)=\prod_{i=0}^{n-1}\frac{\mathrm{NUM}_i}{\mathrm{DEN}_i}=1.
 $$
 
 實作 inversion 前要檢查 denominator 是否為零；toy protocol 可以重新抽 challenge，Fiat–Shamir 版本則應把失敗視為 proof generation failure，不可默默用零代替 inverse。
 
-## 7. 檢查四組 polynomial constraints
+## 7. 檢查四組 polynomial constraints（`src/multiset/quotient_poly.rs`）
 
 令 $L_0(X)$ 與 $L_n(X)$ 分別為 domain 第一點與最後一點的 Lagrange basis polynomial。需要檢查：
 
@@ -220,7 +240,7 @@ $$
 
 Phase A 應先在 $H$ 的每一點直接檢查上述 constraints。這一步最容易發現 off-by-one、rotation 與 $h_1/h_2$ overlap 錯誤。
 
-## 8. 建立 constraint 與 quotient polynomial
+## 8. 建立 constraint 與 quotient polynomial（`src/multiset/quotient_poly.rs`、`src/multiset/proof.rs`）
 
 進入 committed protocol 後，使用新的 transcript challenge $\eta$ 隨機合併四組 constraints，避免不同 constraints 的錯誤互相抵消。令合併後的 polynomial 為 $C(X)$。
 
@@ -238,7 +258,7 @@ $$
 
 且 polynomial division 的 remainder 必須為零。實作時不要只計算某一點上的 $C(\zeta)/Z_H(\zeta)$；prover 必須先由完整的 $C(X)$ 建立並承諾真正的 quotient polynomial $Q(X)$。
 
-## 9. KZG commitments 與 openings
+## 9. KZG commitments 與 openings（`src/kzg10.rs`、`src/transcript.rs`、`src/multiset/proof.rs`）
 
 Phase B 使用 KZG 將 polynomial identities 轉成 succinct proof：
 
@@ -270,7 +290,7 @@ $$
 
 同一 evaluation point 的 openings 可以 batch；$\zeta$ 與 $\omega\zeta$ 是兩個不同的 opening points。Fiat–Shamir transcript 必須吸收 protocol label、公開 table／domain、所有 commitments 與先前訊息，且 challenge 的產生順序不可交換。參考 POC 特別提醒：若在 transcript 尚為空時就抽取 row-compression challenge，non-interactive 版本可能缺乏足夠 entropy；因此本練習應先承諾原始 witness columns，或把 lookup 嵌入已有 transcript state 的外層 protocol。
 
-## 10. 建議的實作順序
+## 10. 建議的實作順序（`src/lookup/`、`src/multiset/`、`src/kzg10.rs`、`src/transcript.rs`）
 
 先完成可直接測試的 Phase A，再加入 Phase B：
 
@@ -294,7 +314,9 @@ witness 建立與合法 padding
 加入 transcript、KZG commitments 與 openings
 ```
 
-建議模組分工：
+### 與參考 repo 對齊的檔案結構
+
+以下沿用 `kevaundray/plookup` 的實際目錄分層，只把 XOR 專用的 `four_bits.rs` 換成 ReLU 專用的 `relu.rs`：
 
 ```text
 plookup/
@@ -302,32 +324,44 @@ plookup/
 ├── README.md
 ├── src/
 │   ├── lib.rs
-│   ├── encoding.rs       # signed integer <-> Fr、relu()
-│   ├── table.rs          # 64-row public ReLU table
-│   ├── witness.rs        # query rows 與合法 padding
-│   ├── compression.rs    # row compression with θ
-│   ├── sorted.rs         # s、h₁、h₂ evaluations
-│   ├── polynomial.rs     # domain、interpolation、rotation
-│   ├── protocol.rs       # Z、constraints、quotient
-│   └── commitment.rs     # transcript 與 KZG（Phase B）
+│   ├── kzg10.rs
+│   ├── transcript.rs
+│   ├── lookup/
+│   │   ├── mod.rs
+│   │   ├── lookup.rs
+│   │   ├── proof.rs
+│   │   └── table/
+│   │       ├── mod.rs
+│   │       ├── generic.rs
+│   │       └── relu.rs
+│   └── multiset/
+│       ├── mod.rs
+│       ├── multiset.rs
+│       ├── multiset_equality.rs
+│       ├── proof.rs
+│       └── quotient_poly.rs
 └── tests/
-    ├── table.rs
-    ├── compression.rs
-    ├── sorted.rs
-    ├── protocol.rs
-    └── invalid_witness.rs
+    └── lookup.rs
 ```
 
-## 11. 最低測試集合
+## 11. 最低測試集合（`tests/lookup.rs`）
+
+### 現階段：整數案例
 
 - 公開 table 恰好包含 `x = -32..31` 的 64 個 ReLU rows。
-- 題目中的 9 筆輸入得到預期輸出，padding 後 witness 長度為 63。
+- 整數輸入 `[2, 4, -1, 0, 15, 6, -24, -2, 15]` 得到 `[2, 4, 0, 0, 15, 6, 0, 0, 15]`，padding 後 witness 長度為 63。
 - 重複查詢（例如 `(15, 15)`）在 sorted concatenation 中保留正確 multiplicity。
 - $h_1$ 與 $h_2$ 各有 64 個 evaluations，且交界值相同。
 - 合法 witness 的 $Z$ 起點與終點都是 1，四組 constraints 在整個 $H$ 上為零。
 - 非法輸出（例如 `(2, 3)`）、超出範圍的輸入（例如 `(32, 32)`）與被竄改的 compressed witness 都無法通過。
 - 合法 case 的 quotient division remainder 為零；非法 case 的 constraints 或 remainder 非零。
 - Phase B 中竄改 evaluation、opening proof、commitment 或 transcript message 都必須驗證失敗。
+
+### 後續階段：浮點數案例
+
+- 輸入 `[2.0, 4.0, -1.0, 0.0, 0.85, 0.3, 24.0, -0.2, 0.15]` 得到 `[2.0, 4.0, 0.0, 0.0, 0.85, 0.3, 24.0, 0.0, 0.15]`。
+- 測試 fixed-point encode/decode、量化誤差、邊界值與超出可表示範圍的輸入。
+- 浮點數測試在 fixed-point 規格確定前標記為尚未實作，不使用原生浮點數直接建立 field witness。
 
 ## 參考資料
 
