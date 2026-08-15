@@ -44,6 +44,16 @@ impl ReLUTable {
         }
     }
 
+    pub fn read(&self, input: i64) -> Option<i64> {
+        for row in &self.rows {
+            if row.input == input {
+                return Some(row.output);
+            }
+        }
+
+        None
+    }
+
     /// 將表中原本的 i64 編碼的輸入輸出分別轉成 Fr 並存入 encode_input_column, encode_output_column
     pub fn encode_input_column(&self) -> Vec<Fr> {
         let mut column = Vec::new();
@@ -125,5 +135,13 @@ mod tests {
         assert_eq!(column[18], encode_signed(0));
         assert_eq!(column[32], encode_signed(0));
         assert_eq!(column[47], encode_signed(15));
+    }
+
+    #[test]
+    fn read_valid_inputs() {
+        let table = ReLUTable::new();
+
+        assert_eq!(table.read(-24), Some(0));
+        assert_eq!(table.read(24), Some(24));
     }
 }
