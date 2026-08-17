@@ -69,6 +69,10 @@ pub fn compute_accumulator_values(f: &MultiSet, t: &MultiSet, h_1: &MultiSet, h_
 #[cfg(test)]
 mod test {
     use super::*;
+    use ark_poly::{EvaluationDomain, Polynomial, Radix2EvaluationDomain};
+    use crate::lookup::lookup::LookUp;
+    use crate::lookup::proof::{compress_column, encode_and_pad_witness};
+    use crate::lookup::table::relu::ReLUTable;
 
     #[test]
     fn accumulator_matches_recursive_definition_step_by_step() {
@@ -93,5 +97,33 @@ mod test {
 
         // the last element should be equal to 1
         assert_eq!(*z.last().unwrap(), Fr::one());
+    }
+
+    #[test]
+    fn h1_h2_overlap_holds_via_polynomial_evaluation() {
+        let table = ReLUTable::new();
+        let mut lookup = LookUp::new(ReLUTable::new());
+        let inputs = [2, 4, -1, 0, 15, 6, -24, -2, 15];
+        for input in inputs {
+            assert!(lookup.read(input));
+        }
+        let (encoded_inputs, encoded_outputs) = encode_and_pad_witness(lookup.input_wires(), lookup.output_wires());
+        let theta = Fr::from(7u64);
+        let compressed_witness = compress_column(&encoded_inputs, &encoded_outputs, theta);
+        let compressed_table = compress_column(&table.encode_input_column(), &table.encode_output_column(), theta);
+
+        let f = MultiSet::from_slice(&compressed_witness);
+        let t = MultiSet::from_slice(&compressed_table);
+
+        let (h_1, h_2) = compute_h1_h2(&f, &t).unwrap();
+
+        let domain: Radix2EvaluationDomain<Fr> = EvaluationDomain::new(h_1.len()).unwrap();
+        let h_1_poly = h_1.to_polynomial(&domain);
+        let h_2_poly = h_2.to_polynomial(&domain);
+
+        let last_element = domain.elements().last().unwrap();
+        let first_element = Fr::one();
+
+        assert_eq!(h_1_poly.evaluate(&last_element), h_2_poly.evaluate(&first_element));
     }
 }
