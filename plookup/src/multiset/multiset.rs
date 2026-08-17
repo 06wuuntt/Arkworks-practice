@@ -106,7 +106,7 @@ impl MultiSet {
 #[cfg(test)]
 mod test {
     use ark_poly::{Polynomial, Radix2EvaluationDomain};
-    use crate::lookup::table::relu::{ReLUTable};
+    use crate::lookup::table::relu::ReLUTable;
     use crate::lookup::lookup::LookUp;
     use crate::lookup::proof::{compress_column, encode_and_pad_witness};
 
