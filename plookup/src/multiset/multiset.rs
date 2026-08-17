@@ -106,9 +106,25 @@ impl MultiSet {
 #[cfg(test)]
 mod test {
     use ark_poly::{Polynomial, Radix2EvaluationDomain};
+    use crate::lookup::table::relu::{ReLUTable};
+    use crate::lookup::lookup::LookUp;
+    use crate::lookup::proof::{compress_column, encode_and_pad_witness};
 
     use super::*;
-    
+
+    fn fr(values: &[i64]) -> Vec<Fr> {
+        values
+            .iter()
+            .map(|v| {
+                if *v >= 0 {
+                    Fr::from(*v as u64)
+                } else {
+                    -Fr::from(v.unsigned_abs())
+                }
+            })
+            .collect()
+    }
+
     // ---- basic operations ----
 
     #[test]
@@ -246,5 +262,37 @@ mod test {
             let point = domain.element(i);
             assert_eq!(poly.evaluate(&point), *expected);
         }
+    }
+
+    // ---- ReLU test ----
+    #[test]
+    fn relu_witness_concatenate_and_sort() {
+        let table = ReLUTable::new();
+        let mut lookup = LookUp::new(ReLUTable::new());
+
+        let inputs = [2, 4, -1, 0, 15, 6, -24, -2, 15];
+        for input in inputs {
+            assert!(lookup.read(input));
+        }
+
+        let (encoded_inputs, encoded_outputs) = encode_and_pad_witness(lookup.input_wires(), lookup.output_wires());
+
+        let theta = Fr::from(7u64);
+        let compressed_witness = compress_column(&encoded_inputs, &encoded_outputs, theta);
+        let compressed_table = compress_column(&table.encode_input_column(), &table.encode_output_column(), theta);
+        
+        let witness_ms = MultiSet::from_slice(&compressed_witness);
+        let table_ms = MultiSet::from_slice(&compressed_table);
+
+        let sorted = witness_ms.concatenate_and_sort(&table_ms).unwrap();
+
+        assert_eq!(witness_ms.len(), 63);
+        assert_eq!(table_ms.len(), 64);
+        assert_eq!(sorted.len(), 127);   // 2 * 63 + 1
+
+        let (h1, h2) = sorted.halve();
+        assert_eq!(h1.len(), 64);
+        assert_eq!(h2.len(), 64);
+        assert_eq!(h1.last(), h2.as_slice()[0]);
     }
 }
